@@ -67,7 +67,7 @@ jobs:
       - name: Build Windows CLI sidecar
         working-directory: packages/opencode
         shell: bash
-        run: bun ./script/build.ts --single --baseline
+        run: bun ./script/build.ts --single --baseline --skip-install
 
       - name: Copy Windows sidecar into desktop bundle
         shell: pwsh
