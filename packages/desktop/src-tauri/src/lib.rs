@@ -1,3 +1,4 @@
+mod bootstrap;
 mod cli;
 mod constants;
 #[cfg(target_os = "linux")]
@@ -418,6 +419,10 @@ struct LoadingWindowComplete;
 async fn initialize(app: AppHandle) {
     tracing::info!("Initializing app");
 
+    if let Err(error) = bootstrap::seed_bundled_configuration() {
+        tracing::warn!("Failed to seed bundled configuration: {error}");
+    }
+
     let (init_tx, init_rx) = watch::channel(InitStep::ServerWaiting);
 
     setup_app(&app, init_rx);
@@ -546,7 +551,6 @@ fn spawn_cli_sync_task(app: AppHandle) {
         }
     });
 }
-
 
 fn get_sidecar_port() -> u32 {
     option_env!("OPENCODE_PORT")

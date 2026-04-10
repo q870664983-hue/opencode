@@ -53,7 +53,12 @@ impl MainWindow {
             app,
             decorations,
         )
-        .title("OpenCode")
+        .title(
+            app.config()
+                .product_name
+                .clone()
+                .unwrap_or_else(|| "SineCode".to_string()),
+        )
         .disable_drag_drop_handler()
         .zoom_hotkeys_enabled(false)
         .visible(true)

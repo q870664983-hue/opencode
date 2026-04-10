@@ -46,6 +46,19 @@ export function hasProjectPermissions<T>(
   return Object.values(request ?? {}).some((list) => list?.some(include))
 }
 
+export const childSessionOnPath = (sessions: Session[] | undefined, rootID: string, activeID?: string) => {
+  if (!activeID || activeID === rootID) return
+  const map = new Map((sessions ?? []).map((session) => [session.id, session]))
+  let id = activeID
+
+  while (id) {
+    const session = map.get(id)
+    if (!session?.parentID) return
+    if (session.parentID === rootID) return session
+    id = session.parentID
+  }
+}
+
 export const childMapByParent = (sessions: Session[] | undefined) => {
   const map = new Map<string, string[]>()
   for (const session of sessions ?? []) {

@@ -2,7 +2,7 @@
 import * as mod from "./logo"
 
 const docs = `### Overview
-OpenCode logo assets: mark, splash, and wordmark.
+SineCode logo assets: mark, splash, and wordmark.
 
 Use Mark for compact spaces, Logo for headers, Splash for hero sections.
 
@@ -13,7 +13,7 @@ Use Mark for compact spaces, Logo for headers, Splash for hero sections.
 - Multiple logo variants for different contexts.
 
 ### Behavior
-- Pure SVG rendering.
+- Uses the shared packaged SineCode brand mark asset.
 
 ### Accessibility
 - Provide title/aria-label when logos convey meaning.

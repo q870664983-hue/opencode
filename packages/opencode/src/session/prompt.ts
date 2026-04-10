@@ -1504,7 +1504,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
                   Effect.promise(() => SystemPrompt.environment(model)),
                   Effect.promise(() => SineFlowPrompt.system({ agent, user: lastUser })),
                   instruction.system().pipe(Effect.orDie),
-                  Effect.promise(() => MessageV2.toModelMessages(msgs, model)),
+                  MessageV2.toModelMessagesEffect(msgs, model),
                 ])
                 const system = [...env, ...(skills ? [skills] : []), ...sineflow, ...instructions]
                 const format = lastUser.format ?? { type: "text" as const }

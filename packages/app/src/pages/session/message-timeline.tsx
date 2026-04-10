@@ -30,6 +30,7 @@ import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { messageAgentColor } from "@/utils/agent"
 import { parseCommentNote, readCommentMetadata } from "@/utils/comment-note"
+import { sessionTitle } from "@/utils/session-title"
 import { makeTimer } from "@solid-primitives/timer"
 
 type MessageComment = {
@@ -67,6 +68,14 @@ const messageComments = (parts: Part[]): MessageComment[] =>
       },
     ]
   })
+
+const taskDescription = (part: Part, sessionID: string) => {
+  if (part.type !== "tool" || part.tool !== "task") return
+  const metadata = "metadata" in part.state ? part.state.metadata : undefined
+  if (metadata?.sessionId !== sessionID) return
+  const value = part.state.input?.description
+  if (typeof value === "string" && value) return value
+}
 
 const boundaryTarget = (root: HTMLElement, target: EventTarget | null) => {
   const current = target instanceof Element ? target : undefined
@@ -291,9 +300,35 @@ export function MessageTimeline(props: {
     return sync.session.get(id)
   })
   const titleValue = createMemo(() => info()?.title)
+  const titleLabel = createMemo(() => sessionTitle(titleValue()))
   const shareUrl = createMemo(() => info()?.share?.url)
   const shareEnabled = createMemo(() => sync.data.config.share !== "disabled")
   const parentID = createMemo(() => info()?.parentID)
+  const parent = createMemo(() => {
+    const id = parentID()
+    if (!id) return
+    return sync.session.get(id)
+  })
+  const parentMessages = createMemo(() => {
+    const id = parentID()
+    if (!id) return emptyMessages
+    return sync.data.message[id] ?? emptyMessages
+  })
+  const childTaskDescription = createMemo(() => {
+    const id = sessionID()
+    if (!id) return
+    return parentMessages()
+      .flatMap((message) => sync.data.part[message.id] ?? [])
+      .map((part) => taskDescription(part, id))
+      .findLast((value): value is string => !!value)
+  })
+  const childTitle = createMemo(() => {
+    if (!parentID()) return titleLabel() ?? ""
+    if (childTaskDescription()) return childTaskDescription()
+    const value = titleLabel()?.replace(/\s+\(@[^)]+ subagent\)$/, "")
+    if (value) return value
+    return language.t("command.session.new")
+  })
   const showHeader = createMemo(() => !!(titleValue() || parentID()))
   const stageCfg = { init: 1, batch: 3 }
   const staging = createTimelineStaging({
@@ -397,9 +432,21 @@ export function MessageTimeline(props: {
     ),
   )
 
+  createEffect(
+    on(
+      () => [parentID(), childTaskDescription()] as const,
+      ([id, description]) => {
+        if (!id || description) return
+        if (sync.data.message[id] !== undefined) return
+        void sync.session.sync(id)
+      },
+      { defer: true },
+    ),
+  )
+
   const openTitleEditor = () => {
-    if (!sessionID()) return
-    setTitle({ editing: true, draft: titleValue() ?? "" })
+    if (!sessionID() || parentID()) return
+    setTitle({ editing: true, draft: titleLabel() ?? "" })
     requestAnimationFrame(() => {
       titleRef?.focus()
       titleRef?.select()
@@ -417,7 +464,7 @@ export function MessageTimeline(props: {
     if (titleMutation.isPending) return
 
     const next = title.draft.trim()
-    if (!next || next === (titleValue() ?? "")) {
+    if (!next || next === (titleLabel() ?? "")) {
       setTitle("editing", false)
       return
     }
@@ -532,7 +579,9 @@ export function MessageTimeline(props: {
   }
 
   function DialogDeleteSession(props: { sessionID: string }) {
-    const name = createMemo(() => sync.session.get(props.sessionID)?.title ?? language.t("command.session.new"))
+    const name = createMemo(
+      () => sessionTitle(sync.session.get(props.sessionID)?.title) ?? language.t("command.session.new"),
+    )
     const handleDelete = async () => {
       await deleteSession(props.sessionID)
       dialog.close()
@@ -682,7 +731,7 @@ export function MessageTimeline(props: {
                               class="text-14-medium text-text-strong truncate grow-1 min-w-0"
                               onDblClick={openTitleEditor}
                             >
-                              {titleValue()}
+                              {childTitle()}
                             </h1>
                           }
                         >
