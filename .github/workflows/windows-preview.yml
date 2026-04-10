@@ -44,7 +44,13 @@ jobs:
 
       - name: Install node-gyp for native module rebuilds
         shell: bash
-        run: npm install --no-save --no-package-lock node-gyp
+        run: |
+          BOOTSTRAP_DIR="$RUNNER_TEMP/node-gyp-bootstrap"
+          rm -rf "$BOOTSTRAP_DIR"
+          mkdir -p "$BOOTSTRAP_DIR"
+          npm install --prefix "$BOOTSTRAP_DIR" --no-package-lock node-gyp
+          mkdir -p node_modules
+          cp -R "$BOOTSTRAP_DIR/node_modules/." node_modules/
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
