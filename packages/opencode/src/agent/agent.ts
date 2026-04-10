@@ -23,6 +23,24 @@ import { Effect, ServiceMap, Layer } from "effect"
 import { InstanceState } from "@/effect/instance-state"
 import { makeRuntime } from "@/effect/run-service"
 
+const SINEFLOW_SPECIALIST_BASE_PROMPT = [
+  "You are a SineFlow specialist subagent.",
+  "You are not the lead orchestrator. Focus on the assigned slice, use tools directly, and return concrete findings, edits, commands, and residual risks.",
+  "Do not delegate again with the task tool unless the user or orchestrator explicitly asks for additional fan-out.",
+].join("\n")
+
+function sineflowSpecialistPrompt(input: {
+  specialty: string
+  priorities: string[]
+}) {
+  return [
+    SINEFLOW_SPECIALIST_BASE_PROMPT,
+    `Specialty: ${input.specialty}`,
+    "Priorities:",
+    ...input.priorities.map((item) => `- ${item}`),
+  ].join("\n")
+}
+
 export namespace Agent {
   export const Info = z
     .object({
@@ -103,6 +121,33 @@ export namespace Agent {
           })
 
           const user = Permission.fromConfig(cfg.permission ?? {})
+          const createSineflowSpecialist = (input: {
+            name: string
+            description: string
+            prompt: string
+            permission?: Record<string, unknown>
+            color?: string
+          }) =>
+            ({
+              name: input.name,
+              description: input.description,
+              prompt: input.prompt,
+              color: input.color,
+              permission: Permission.merge(
+                defaults,
+                Permission.fromConfig({
+                  task: "deny",
+                  todowrite: "deny",
+                  plan_enter: "deny",
+                  plan_exit: "deny",
+                  ...(input.permission ?? {}),
+                }),
+                user,
+              ),
+              options: {},
+              mode: "subagent" as const,
+              native: true,
+            }) satisfies Info
 
           const agents: Record<string, Info> = {
             build: {
@@ -231,6 +276,93 @@ export namespace Agent {
               ),
               prompt: PROMPT_SUMMARY,
             },
+            "system-architect": createSineflowSpecialist({
+              name: "system-architect",
+              description:
+                "Architecture and orchestration specialist for decomposition, interfaces, risks, and execution planning.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "architecture decomposition, interfaces, dependencies, and execution planning",
+                priorities: [
+                  "Clarify requirements, constraints, role boundaries, and acceptance criteria.",
+                  "Map the work into concrete tasks, dependencies, and risks before implementation.",
+                  "Prefer investigation, analysis, and executable plans over speculative prose.",
+                ],
+              }),
+              permission: {
+                edit: "deny",
+              },
+              color: "cyan",
+            }),
+            "rtl-designer": createSineflowSpecialist({
+              name: "rtl-designer",
+              description:
+                "Implementation-oriented coding specialist for source changes, interfaces, and structural design work.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "implementation structure, interfaces, and code-level design changes",
+                priorities: [
+                  "Translate requirements into concrete code structure and implementation steps.",
+                  "Keep edits coherent with surrounding patterns, constraints, and interfaces.",
+                  "Return exact edits made, assumptions, and any follow-up verification still required.",
+                ],
+              }),
+              color: "blue",
+            }),
+            "verification-engineer": createSineflowSpecialist({
+              name: "verification-engineer",
+              description:
+                "Quality specialist for tests, regression prevention, acceptance criteria, and failure analysis.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "tests, acceptance criteria, regression analysis, and failure triage",
+                priorities: [
+                  "Define what done means in executable terms wherever possible.",
+                  "Look for edge cases, regressions, and missing coverage before declaring success.",
+                  "Prefer reproducible checks and concrete failure evidence over general advice.",
+                ],
+              }),
+              color: "green",
+            }),
+            "implementation-engineer": createSineflowSpecialist({
+              name: "implementation-engineer",
+              description:
+                "Execution specialist for integration, debugging, build fixes, and turning plans into working changes.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "integration, debugging, execution details, and shipping working changes",
+                priorities: [
+                  "Take plans through to working code and validated behavior.",
+                  "Use local tools, logs, and build output to resolve issues instead of guessing.",
+                  "Surface blockers with the exact command, file, or failure that caused them.",
+                ],
+              }),
+              color: "orange",
+            }),
+            "toolchain-engineer": createSineflowSpecialist({
+              name: "toolchain-engineer",
+              description:
+                "Tooling specialist for local commands, scripts, build pipelines, and environment diagnostics.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "local toolchains, scripts, command execution, and environment diagnostics",
+                priorities: [
+                  "Use the bash tool to inspect, run, and debug local tooling and automation entrypoints.",
+                  "Prefer concrete commands, reproducible outputs, and minimal environment assumptions.",
+                  "Record the exact command path, flags, and next action needed to keep the pipeline moving.",
+                ],
+              }),
+              color: "yellow",
+            }),
+            "documentation-engineer": createSineflowSpecialist({
+              name: "documentation-engineer",
+              description:
+                "Documentation and memory specialist for durable decisions, project notes, and delivery records.",
+              prompt: sineflowSpecialistPrompt({
+                specialty: "project memory, interface notes, decision records, and delivery documentation",
+                priorities: [
+                  "Capture durable constraints, decisions, interfaces, and follow-up actions clearly.",
+                  "Keep project memory aligned with what actually changed or was validated.",
+                  "Write concise artifacts that future agents and humans can use without extra context.",
+                ],
+              }),
+              color: "pink",
+            }),
           }
 
           for (const [key, value] of Object.entries(cfg.agent ?? {})) {

@@ -1,0 +1,92 @@
+name: windows-preview
+
+on:
+  push:
+    branches:
+      - codex/**
+    paths:
+      - .github/workflows/windows-preview.yml
+      - packages/desktop/**
+      - packages/app/**
+      - packages/ui/**
+      - packages/opencode/**
+      - package.json
+      - bun.lock
+  workflow_dispatch:
+    inputs:
+      rust_target:
+        description: Windows Rust target
+        required: true
+        default: x86_64-pc-windows-msvc
+        type: choice
+        options:
+          - x86_64-pc-windows-msvc
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-installer:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    env:
+      RUST_TARGET: ${{ inputs.rust_target || 'x86_64-pc-windows-msvc' }}
+      NODE_VERSION: "24"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.RUST_TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/desktop/src-tauri
+            packages/opencode
+          shared-key: windows-preview-${{ env.RUST_TARGET }}
+
+      - name: Build Windows CLI sidecar
+        working-directory: packages/opencode
+        shell: bash
+        run: bun ./script/build.ts --single --baseline
+
+      - name: Copy Windows sidecar into desktop bundle
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "packages/desktop/src-tauri/sidecars" | Out-Null
+          Copy-Item `
+            "packages/opencode/dist/opencode-windows-x64-baseline/bin/opencode.exe" `
+            "packages/desktop/src-tauri/sidecars/opencode-cli-${{ env.RUST_TARGET }}.exe" `
+            -Force
+
+      - name: Build Windows NSIS installer
+        working-directory: packages/desktop
+        shell: bash
+        run: bun run tauri build --target "${RUST_TARGET}" --bundles nsis --config src-tauri/tauri.conf.json --no-sign
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-multiagent-windows-installer-${{ env.RUST_TARGET }}
+          path: |
+            packages/desktop/src-tauri/target/${{ env.RUST_TARGET }}/release/bundle/nsis/*.exe
+            packages/desktop/src-tauri/target/${{ env.RUST_TARGET }}/release/bundle/nsis/*.exe.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows sidecar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-multiagent-windows-sidecar-${{ env.RUST_TARGET }}
+          path: packages/desktop/src-tauri/sidecars/opencode-cli-${{ env.RUST_TARGET }}.exe
+          if-no-files-found: error
+          retention-days: 14

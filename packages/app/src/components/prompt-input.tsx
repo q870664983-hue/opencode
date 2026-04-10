@@ -328,6 +328,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       entries: [],
     }),
   )
+  const [planningMode, setPlanningMode] = persisted(
+    Persist.global("prompt-planning-mode", ["prompt-planning-mode.v1"]),
+    createStore<{
+      enabled: boolean
+    }>({
+      enabled: false,
+    }),
+  )
 
   const suggest = createMemo(() => !hasUserPrompt())
 
@@ -1065,6 +1073,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const acceptLabel = createMemo(() =>
     language.t(accepting() ? "command.permissions.autoaccept.disable" : "command.permissions.autoaccept.enable"),
   )
+  const autoPlanLabel = createMemo(() =>
+    planningMode.enabled ? "自动规划已开启" : "自动规划已关闭",
+  )
+  const toggleAutoPlan = () => {
+    setPlanningMode("enabled", (enabled) => !enabled)
+  }
   const toggleAccept = () => {
     if (!params.id) {
       permission.toggleAutoAcceptDirectory(sdk.directory)
@@ -1079,6 +1093,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     imageAttachments,
     commentCount,
     autoAccept: () => accepting(),
+    autoPlanEnabled: () => planningMode.enabled,
     mode: () => store.mode,
     working,
     editor: () => editorRef,
@@ -1318,7 +1333,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             if (!(target instanceof HTMLElement)) return
             if (
               target.closest(
-                '[data-action="prompt-attach"], [data-action="prompt-submit"], [data-action="prompt-permissions"]',
+                '[data-action="prompt-attach"], [data-action="prompt-submit"], [data-action="prompt-planning-mode"], [data-action="prompt-permissions"]',
               )
             ) {
               return
@@ -1571,6 +1586,28 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     />
                   </TooltipKeybind>
                 </div>
+                <Tooltip placement="top" gutter={8} value={autoPlanLabel()}>
+                  <Button
+                    data-action="prompt-planning-mode"
+                    type="button"
+                    variant="ghost"
+                    onClick={toggleAutoPlan}
+                    disabled={store.mode !== "normal"}
+                    tabIndex={store.mode === "normal" ? undefined : -1}
+                    classList={{
+                      "h-7 gap-1.5 px-2 shrink-0": true,
+                      "text-text-base": !planningMode.enabled,
+                      "bg-surface-interactive-hover shadow-xs-border-hover": planningMode.enabled,
+                      "opacity-50": store.mode !== "normal",
+                    }}
+                    style={control()}
+                    aria-label={autoPlanLabel()}
+                    aria-pressed={planningMode.enabled}
+                  >
+                    <Icon name="brain" size="small" classList={{ "text-icon-info-active": planningMode.enabled }} />
+                    <span class="truncate text-13-regular">自动规划</span>
+                  </Button>
+                </Tooltip>
                 <TooltipKeybind
                   placement="top"
                   gutter={8}

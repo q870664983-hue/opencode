@@ -13,6 +13,7 @@ import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
+import { SineFlowPrompt } from "./sineflow"
 import { Flag } from "@/flag/flag"
 import { Permission } from "@/permission"
 import { Auth } from "@/auth"
@@ -99,6 +100,7 @@ export namespace LLM {
     const isOpenaiOauth = provider.id === "openai" && auth?.type === "oauth"
 
     const system: string[] = []
+    const sineflow = SineFlowPrompt.parseUserSystem(input.user.system)
     system.push(
       [
         // use agent prompt otherwise provider prompt
@@ -106,7 +108,7 @@ export namespace LLM {
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
-        ...(input.user.system ? [input.user.system] : []),
+        ...(sineflow.cleaned ? [sineflow.cleaned] : []),
       ]
         .filter((x) => x)
         .join("\n"),

@@ -25,6 +25,7 @@ type PendingPrompt = {
 }
 
 const pending = new Map<string, PendingPrompt>()
+const MULTI_AGENT_AUTO_PLAN_SYSTEM = '<sineflow execution="auto" />'
 
 export type FollowupDraft = {
   sessionID: string
@@ -34,6 +35,8 @@ export type FollowupDraft = {
   agent: string
   model: { providerID: string; modelID: string }
   variant?: string
+  planningMode: "single" | "multi-agent-auto"
+  system?: string
 }
 
 type FollowupSendInput = {
@@ -155,6 +158,7 @@ export async function sendFollowupDraft(input: FollowupSendInput) {
       model: input.draft.model,
       messageID,
       parts: requestParts,
+      system: input.draft.system,
       variant: input.draft.variant,
     })
     return true
@@ -170,6 +174,7 @@ type PromptSubmitInput = {
   imageAttachments: Accessor<ImageAttachmentPart[]>
   commentCount: Accessor<number>
   autoAccept: Accessor<boolean>
+  autoPlanEnabled: Accessor<boolean>
   mode: Accessor<"normal" | "shell">
   working: Accessor<boolean>
   editor: () => HTMLDivElement | undefined
@@ -390,6 +395,7 @@ export function createPromptSubmit(input: PromptSubmitInput) {
     }
     const agent = currentAgent.name
     const context = prompt.context.items().slice()
+    const planningMode = mode === "normal" && input.autoPlanEnabled() ? "multi-agent-auto" : "single"
     const draft: FollowupDraft = {
       sessionID: session.id,
       sessionDirectory,
@@ -398,6 +404,8 @@ export function createPromptSubmit(input: PromptSubmitInput) {
       agent,
       model,
       variant,
+      planningMode,
+      system: planningMode === "multi-agent-auto" ? MULTI_AGENT_AUTO_PLAN_SYSTEM : undefined,
     }
 
     const clearInput = () => {
