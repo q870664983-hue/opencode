@@ -1,0 +1,150 @@
+name: build-desktop
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SineKniter release version, for example sinecode1.14.19-030"
+        required: true
+        type: string
+      release_id:
+        description: "Admin release id"
+        required: true
+        type: string
+      build_id:
+        description: "Admin build job id"
+        required: true
+        type: string
+      ref:
+        description: "Git ref to build"
+        required: false
+        default: "dev"
+        type: string
+      callback_url:
+        description: "Admin callback URL"
+        required: true
+        type: string
+      targets:
+        description: "Comma-separated build targets"
+        required: false
+        default: ""
+        type: string
+      channel:
+        description: "Release channel"
+        required: false
+        default: "prod"
+        type: choice
+        options:
+          - dev
+          - beta
+          - prod
+
+concurrency: desktop-${{ inputs.build_id }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_id: macos-arm64
+            runner: macos-14
+            platform: mac
+            arch: arm64
+          - target_id: macos-x64
+            runner: macos-13
+            platform: mac
+            arch: x64
+          - target_id: windows-x64
+            runner: windows-2025
+            platform: win
+            arch: x64
+          - target_id: linux-x64
+            runner: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - target_id: linux-arm64
+            runner: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+    if: ${{ inputs.targets == '' || contains(inputs.targets, matrix.target_id) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Import Apple signing certificate
+        if: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' }}
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          keychain: build
+          p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
+          p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+
+      - name: Prepare Apple notarization key
+        if: ${{ runner.os == 'macOS' && secrets.APPLE_API_KEY_PATH != '' }}
+        shell: bash
+        run: echo "${{ secrets.APPLE_API_KEY_PATH }}" > "$RUNNER_TEMP/apple-api-key.p8"
+
+      - name: Azure login for Windows signing
+        if: ${{ runner.os == 'Windows' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_TENANT_ID != '' && secrets.AZURE_SUBSCRIPTION_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build desktop package
+        id: build
+        working-directory: packages/desktop-electron
+        shell: bash
+        env:
+          SINE_RELEASE_VERSION: ${{ inputs.version }}
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/apple-api-key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          AZURE_TRUSTED_SIGNING_ENDPOINT: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT_NAME: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT_NAME }}
+          AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE: ${{ secrets.AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE }}
+        run: bun run release --platform "${{ matrix.platform }}" --arch "${{ matrix.arch }}" --channel "${{ inputs.channel }}" --publish never
+
+      - name: Upload release assets to GitHub Release
+        id: upload
+        if: ${{ steps.build.outcome == 'success' }}
+        working-directory: packages/desktop-electron
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SINE_RELEASE_VERSION: ${{ inputs.version }}
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+        run: bun ./scripts/upload-release-assets.ts
+
+      - name: Report build result to admin
+        if: ${{ always() }}
+        working-directory: packages/desktop-electron
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          SINE_RELEASE_VERSION: ${{ inputs.version }}
+          SINE_RELEASE_ID: ${{ inputs.release_id }}
+          SINE_BUILD_ID: ${{ inputs.build_id }}
+          SINE_BUILD_TARGET: ${{ matrix.target_id }}
+          SINE_BUILD_CALLBACK_URL: ${{ inputs.callback_url }}
+          SINE_BUILD_CALLBACK_TOKEN: ${{ secrets.SINE_ADMIN_BUILD_CALLBACK_TOKEN }}
+          SINE_BUILD_STEP_OUTCOME: ${{ steps.build.outcome }}
+          SINE_UPLOAD_STEP_OUTCOME: ${{ steps.upload.outcome }}
+          OPENCODE_CHANNEL: ${{ inputs.channel }}
+        run: bun ./scripts/report-build-result.ts
