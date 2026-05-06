@@ -70,7 +70,6 @@ jobs:
             runner: ubuntu-24.04-arm
             platform: linux
             arch: arm64
-    if: ${{ inputs.targets == '' || contains(inputs.targets, matrix.target_id) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
