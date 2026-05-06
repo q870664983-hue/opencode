@@ -1,6 +1,6 @@
 name: build-desktop
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       version:
